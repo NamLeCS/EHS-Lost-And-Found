@@ -1,5 +1,5 @@
 function match(report, items) {
-    let fields = ["id", "name", "color", "location", "category", "description", "texture", "size", "material", "weight", "date"];
+    let fields = ["id", "name", "color", "location", "category", "texture", "size", "material", "weight", "date"];
     for (let item of items) {
         let match_score = 0;
         for (let index = 0; index < fields.length; index++) {
