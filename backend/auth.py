@@ -1,8 +1,9 @@
 import hashlib
 import secrets
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Depends
 from sqlalchemy.orm import Session
 from models import User
+from db import get_db
 
 
 def hash_pw(password: str) -> str:
@@ -13,6 +14,9 @@ def hash_pw(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
+VALID_ROLES = {"student", "admin"}
+
+
 def register_user(db: Session, email: str, password: str, role: str = "student"):
     """
     Creates a new user.
@@ -21,6 +25,10 @@ def register_user(db: Session, email: str, password: str, role: str = "student")
     2. Hashes password
     3. Saves user to database
     """
+    role = (role or "student").lower()
+    if role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid role")
+
     existing = db.query(User).filter(User.email == email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -60,7 +68,10 @@ def login_user(db: Session, email: str, password: str):
     return token
 
 
-def get_current_user(db: Session, authorization: str = Header(default=None)):
+def get_current_user(
+    authorization: str = Header(default=None),
+    db: Session = Depends(get_db),
+):
     """
     Extracts and verifies Bearer token from request header.
 
@@ -72,7 +83,7 @@ def get_current_user(db: Session, authorization: str = Header(default=None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing token")
 
-    token = authorization.split(" ")[1]
+    token = authorization.split(" ", 1)[1]
 
     user = db.query(User).filter(User.token == token).first()
     if not user:
