@@ -4,8 +4,8 @@ import os
 import secrets
 from fastapi import Header, HTTPException, Depends
 from sqlalchemy.orm import Session
-from models import User
-from db import get_db
+from .models import User
+from .db import get_db
 
 
 PBKDF2_ITERATIONS = 100_000
