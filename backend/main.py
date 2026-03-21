@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr, Field
 
@@ -10,6 +11,20 @@ from .auth import register_user, login_user, get_current_user, require_admin
 from .matching import on_missing_report_created, on_found_item_created, score_match
 
 app = FastAPI(title="EHS Lost & Found Backend")
+
+# Lets the Vite dev server (and preview) call the API directly if needed; also helps some proxy setups.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
@@ -77,11 +92,13 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
 @app.post("/login")
 def login(payload: LoginIn, db: Session = Depends(get_db)):
     """
-    Logs user in and returns auth token.
-    Admin login requires authorization via backend configuration.
+    Logs user in and returns auth token plus user profile (id, email, role).
     """
-    token = login_user(db, payload.email, payload.password, payload.admin_code)
-    return {"token": token}
+    token, user = login_user(db, payload.email, payload.password)
+    return {
+        "token": token,
+        "user": {"id": user.id, "email": user.email, "role": user.role},
+    }
 
 
 # ---------- STUDENT + ADMIN ----------
@@ -272,107 +289,27 @@ def create_claim(
     return {"claim_id": claim.id, "status": claim.status}
 
 
-# ---------- ADMIN ONLY ----------
-@app.post("/found-items")
-def create_found(
-    payload: FoundIn,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-):
+@app.get("/claims")
+def list_my_claims(db: Session = Depends(get_db), user=Depends(get_current_user)):
     """
-    Admin creates a found item record and triggers the matching engine.
+    Returns all claims submitted by the logged-in user (newest first).
     """
-    require_admin(user)
-
-    item = FoundItem(**payload.model_dump())
-    db.add(item)
-    db.commit()
-    db.refresh(item)
-
-    on_found_item_created(db, item.id)
-
-    return {"found_item_id": item.id, "status": item.status}
-
-
-@app.get("/found-items")
-def list_found_items(
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-    status: str | None = Query(default=None),
-):
-    """
-    Admin list of found items.
-    """
-    require_admin(user)
-
-    query = db.query(FoundItem)
-    if status:
-        query = query.filter(FoundItem.status == status)
-
-    items = query.order_by(FoundItem.id.desc()).all()
+    rows = (
+        db.query(Claim, Match)
+        .join(Match, Claim.match_id == Match.id)
+        .filter(Claim.user_id == user.id)
+        .order_by(Claim.id.desc())
+        .all()
+    )
     return [
         {
-            "id": item.id,
-            "category": item.category,
-            "brand": item.brand,
-            "colors": item.colors,
-            "description": item.description,
-            "location": item.location,
-            "time": item.time,
-            "status": item.status,
+            "claim_id": claim.id,
+            "match_id": claim.match_id,
+            "report_id": match_row.missing_report_id,
+            "status": claim.status,
         }
-        for item in items
+        for claim, match_row in rows
     ]
-
-
-@app.delete("/found-items/{item_id}")
-def delete_found_item(
-    item_id: int,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-):
-    """
-    Admin removes a found item from the database.
-    Related suggested matches are also removed.
-    """
-    require_admin(user)
-
-    item = db.get(FoundItem, item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Found item not found")
-
-    db.query(Match).filter(Match.found_item_id == item_id).delete()
-    db.delete(item)
-    db.commit()
-
-    return {"deleted": True, "found_item_id": item_id}
-
-
-@app.delete("/missing-reports/{report_id}")
-def delete_missing_report(
-    report_id: int,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user),
-):
-    """
-    Admin can remove any missing report.
-    Students can remove only their own report.
-    """
-    report = db.get(MissingReport, report_id)
-    if not report:
-        raise HTTPException(status_code=404, detail="Missing report not found")
-
-    if user.role != "admin" and report.user_id != user.id:
-        raise HTTPException(status_code=403, detail="Not allowed to delete this report")
-
-    match_ids = [m.id for m in db.query(Match).filter(Match.missing_report_id == report_id).all()]
-    if match_ids:
-        db.query(Claim).filter(Claim.match_id.in_(match_ids)).delete(synchronize_session=False)
-    db.query(Match).filter(Match.missing_report_id == report_id).delete()
-    db.delete(report)
-    db.commit()
-
-    return {"deleted": True, "report_id": report_id}
 
 
 @app.patch("/claims/{claim_id}")

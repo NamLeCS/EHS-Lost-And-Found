@@ -1,5 +1,6 @@
+import axios from 'axios'
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -7,7 +8,7 @@ import {
   createClaim,
   fetchMatches,
 } from '../lib/api'
-import { getStoredReports, saveClaim } from '../lib/storage'
+import { getStoredReports, removeReport, saveClaim } from '../lib/storage'
 import { EmptyState } from '../components/EmptyState'
 import { PageLoader, Spinner } from '../components/Spinner'
 import { ScoreBadge } from '../components/ScoreBadge'
@@ -16,8 +17,10 @@ import { StatusBadge } from '../components/StatusBadge'
 export function ReportMatchesPage() {
   const { id } = useParams()
   const reportId = Number(id)
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [claimingId, setClaimingId] = useState<number | null>(null)
   const [rows, setRows] = useState<
     { id: number; found_item_id: number; score: number; status: string }[]
@@ -28,16 +31,27 @@ export function ReportMatchesPage() {
   const load = useCallback(async () => {
     if (!Number.isFinite(reportId)) return
     setLoading(true)
+    setLoadError(null)
     try {
       const data = await fetchMatches(reportId)
       setRows(data)
     } catch (err) {
-      toast.error(apiErrorMessage(err, 'Could not load matches'))
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        removeReport(reportId)
+        toast.error(
+          'This report is not on the server anymore (for example after a database reset). It was removed from your list.',
+        )
+        navigate('/reports', { replace: true })
+        return
+      }
+      const msg = apiErrorMessage(err, 'Could not load matches')
+      setLoadError(msg)
       setRows([])
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
-  }, [reportId])
+  }, [reportId, navigate])
 
   useEffect(() => {
     load()
@@ -103,6 +117,18 @@ export function ReportMatchesPage() {
 
       {loading ? (
         <PageLoader />
+      ) : loadError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50/80 p-6 text-center text-red-900 shadow-sm">
+          <p className="font-medium">Could not load matches</p>
+          <p className="mt-1 text-sm text-red-800">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => load()}
+            className="mt-4 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-red-800 ring-1 ring-red-200 hover:bg-red-50"
+          >
+            Try again
+          </button>
+        </div>
       ) : rows.length === 0 ? (
         <EmptyState
           title="No matches yet"

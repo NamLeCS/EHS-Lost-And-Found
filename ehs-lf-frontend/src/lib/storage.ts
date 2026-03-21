@@ -36,6 +36,21 @@ export function saveReport(entry: StoredMissingReport) {
   writeJson(REPORTS, all)
 }
 
+export function removeReport(id: number) {
+  const all = getStoredReports().filter((r) => r.id !== id)
+  writeJson(REPORTS, all)
+}
+
+/** Clears cached missing reports (localStorage). Use after wiping the DB or to fix stale IDs. */
+export function clearAllStoredReports() {
+  writeJson(REPORTS, [])
+}
+
+/** Clears cached claims (localStorage). Optional follow-up when clearing all reports. */
+export function clearAllStoredClaims() {
+  writeJson(CLAIMS, [])
+}
+
 export function getStoredFoundItems(): StoredFoundItem[] {
   return readJson<StoredFoundItem[]>(FOUND, [])
 }

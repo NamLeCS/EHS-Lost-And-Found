@@ -10,7 +10,6 @@ export function RegisterPage() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [asAdmin, setAsAdmin] = useState(false)
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({})
   const [submitting, setSubmitting] = useState(false)
 
@@ -26,7 +25,7 @@ export function RegisterPage() {
 
     setSubmitting(true)
     try {
-      await register(email.trim(), password, asAdmin)
+      await register(email.trim(), password)
       toast.success('Account created — please sign in.')
       navigate('/login', { replace: true })
     } catch (err) {
@@ -77,20 +76,6 @@ export function RegisterPage() {
             />
             <FieldError message={errors.password} />
           </div>
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/40 px-4 py-3">
-            <input
-              type="checkbox"
-              checked={asAdmin}
-              onChange={(e) => setAsAdmin(e.target.checked)}
-              className="mt-1 size-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-            />
-            <span className="text-sm text-slate-700">
-              <span className="font-medium text-slate-900">Staff / admin account</span>
-              <span className="mt-0.5 block text-slate-600">
-                Enables lost-and-found desk tools. Only use if you are authorized.
-              </span>
-            </span>
-          </label>
           <button
             type="submit"
             disabled={submitting}

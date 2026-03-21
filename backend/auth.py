@@ -117,7 +117,7 @@ def register_user(db: Session, email: str, password: str, role: str = "student",
     return user
 
 
-def login_user(db: Session, email: str, password: str, admin_code: str | None = None):
+def login_user(db: Session, email: str, password: str) -> tuple[str, User]:
     """
     Logs a user in.
 
@@ -130,9 +130,8 @@ def login_user(db: Session, email: str, password: str, admin_code: str | None = 
     if not user or not verify_pw(password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    if user.role == "admin":
-        if not can_register_admin(user.email, admin_code):
-            raise HTTPException(status_code=403, detail="Admin login is restricted")
+    if user.role == "admin" and not is_authorized_admin_email(user.email):
+        raise HTTPException(status_code=403, detail="Admin login is restricted")
 
     if not user.password_hash.startswith("pbkdf2_sha256$"):
         user.password_hash = hash_pw(password)
@@ -141,8 +140,9 @@ def login_user(db: Session, email: str, password: str, admin_code: str | None = 
     user.token = token
 
     db.commit()
+    db.refresh(user)
 
-    return token
+    return token, user
 
 
 def get_current_user(

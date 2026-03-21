@@ -23,37 +23,11 @@ type AuthContextValue = {
   token: string | null
   isReady: boolean
   login: (email: string, password: string) => Promise<void>
-  register: (
-    email: string,
-    password: string,
-    asAdmin: boolean,
-  ) => Promise<void>
+  register: (email: string, password: string) => Promise<void>
   logout: () => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
-
-function buildUserFromLogin(email: string, pending: ReturnType<typeof readPendingIdentity>) {
-  if (pending && pending.email.toLowerCase() === email.toLowerCase()) {
-    return {
-      id: pending.id,
-      username: pending.email,
-      is_admin: pending.role === 'admin',
-    } satisfies AuthUser
-  }
-  const existing = loadAuthFromStorage()
-  if (
-    existing?.user?.username &&
-    existing.user.username.toLowerCase() === email.toLowerCase()
-  ) {
-    return existing.user
-  }
-  return {
-    id: 0,
-    username: email,
-    is_admin: false,
-  } satisfies AuthUser
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() => {
@@ -70,28 +44,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {
-    const t = await loginRequest(email, password)
+    const body = await loginRequest(email, password)
+    const profile = body.user
+    if (!profile) {
+      throw new Error(
+        'Server login response is missing user. Restart the API after updating the backend.',
+      )
+    }
+    const { token } = body
+    const u: AuthUser = {
+      id: profile.id,
+      username: profile.email,
+      is_admin: profile.role === 'admin',
+    }
     const pending = readPendingIdentity()
-    const u = buildUserFromLogin(email, pending)
     if (pending && pending.email.toLowerCase() === email.toLowerCase()) {
       clearPendingIdentity()
     }
-    saveAuth(t, u)
-    setToken(t)
+    saveAuth(token, u)
+    setToken(token)
     setUser(u)
   }, [])
 
-  const register = useCallback(
-    async (email: string, password: string, asAdmin: boolean) => {
-      const data = await registerRequest(email, password, asAdmin ? 'admin' : 'student')
-      savePendingIdentity({
-        id: data.id,
-        email: data.email,
-        role: data.role,
-      })
-    },
-    [],
-  )
+  const register = useCallback(async (email: string, password: string) => {
+    const data = await registerRequest(email, password, 'student')
+    savePendingIdentity({
+      id: data.id,
+      email: data.email,
+      role: data.role,
+    })
+  }, [])
 
   const value = useMemo(
     () => ({

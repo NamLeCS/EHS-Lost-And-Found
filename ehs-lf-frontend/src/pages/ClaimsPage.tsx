@@ -1,45 +1,62 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
-import { getStoredClaims, STORAGE_EVENT } from '../lib/storage'
+import { apiErrorMessage, fetchMyClaims } from '../lib/api'
 import { EmptyState } from '../components/EmptyState'
+import { PageLoader } from '../components/Spinner'
 import { StatusBadge } from '../components/StatusBadge'
 
 export function ClaimsPage() {
-  const { user } = useAuth()
-  const [version, setVersion] = useState(0)
+  const { user, token } = useAuth()
+  const [loading, setLoading] = useState(true)
+  const [claims, setClaims] = useState<
+    { claim_id: number; match_id: number; report_id: number; status: string }[]
+  >([])
 
-  const bump = useCallback(() => setVersion((v) => v + 1), [])
+  const load = useCallback(async () => {
+    if (!token) {
+      setClaims([])
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    try {
+      const data = await fetchMyClaims()
+      setClaims(data)
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not load claims'))
+      setClaims([])
+    } finally {
+      setLoading(false)
+    }
+  }, [token])
 
   useEffect(() => {
-    const onStorage = () => bump()
-    const onFocus = () => bump()
-    const onLocal = () => bump()
-    window.addEventListener('storage', onStorage)
-    window.addEventListener('focus', onFocus)
-    window.addEventListener(STORAGE_EVENT, onLocal)
-    return () => {
-      window.removeEventListener('storage', onStorage)
-      window.removeEventListener('focus', onFocus)
-      window.removeEventListener(STORAGE_EVENT, onLocal)
-    }
-  }, [bump])
-
-  const claims = useMemo(() => {
-    void version
-    return getStoredClaims().filter((c) => c.user_id === user?.id)
-  }, [user?.id, version])
+    load()
+  }, [load, user?.id])
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900">My claims</h1>
-        <p className="mt-1 text-slate-600">
-          Track items you have identified as yours. Staff will approve or deny each request.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">My claims</h1>
+          <p className="mt-1 text-slate-600">
+            Track items you have identified as yours. Staff will approve or deny each request.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => load()}
+          className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 shadow-sm hover:bg-slate-50"
+        >
+          Refresh
+        </button>
       </div>
 
-      {claims.length === 0 ? (
+      {loading ? (
+        <PageLoader />
+      ) : claims.length === 0 ? (
         <EmptyState
           title="No claims yet"
           message="Open a missing report, review matches, and tap “This is mine” to submit a claim."
@@ -55,9 +72,6 @@ export function ClaimsPage() {
                 <p className="text-sm text-slate-500">Claim #{c.claim_id}</p>
                 <p className="font-semibold text-slate-900">
                   Match #{c.match_id} · Report #{c.report_id}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Submitted {new Date(c.createdAt).toLocaleString()}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
