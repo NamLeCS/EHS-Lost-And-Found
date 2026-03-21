@@ -130,9 +130,8 @@ def login_user(db: Session, email: str, password: str) -> tuple[str, User]:
     if not user or not verify_pw(password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    if user.role == "admin":
-        if not can_register_admin(user.email, admin_code):
-            raise HTTPException(status_code=403, detail="Admin login is restricted")
+    if user.role == "admin" and not is_authorized_admin_email(user.email):
+        raise HTTPException(status_code=403, detail="Admin login is restricted")
 
     if not user.password_hash.startswith("pbkdf2_sha256$"):
         user.password_hash = hash_pw(password)
