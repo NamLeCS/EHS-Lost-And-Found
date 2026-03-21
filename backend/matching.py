@@ -3,7 +3,7 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from sqlalchemy.orm import Session
 
-from models import MissingReport, FoundItem, Match
+from .models import MissingReport, FoundItem, Match
 
 
 MATCH_THRESHOLD = 0.35
