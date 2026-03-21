@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 from db import init_db, get_db
 from models import MissingReport, FoundItem, Match, Claim
@@ -21,14 +21,16 @@ def startup():
 
 # ---------- Schemas ----------
 class RegisterIn(BaseModel):
-    email: str
+    email: EmailStr
     password: str
     role: str = "student"
+    admin_code: str | None = None
 
 
 class LoginIn(BaseModel):
-    email: str
+    email: EmailStr
     password: str
+    admin_code: str | None = None
 
 
 class MissingIn(BaseModel):
@@ -54,8 +56,9 @@ class ClaimIn(BaseModel):
 def register(payload: RegisterIn, db: Session = Depends(get_db)):
     """
     Creates new user.
+    Public users can only self-register as students.
     """
-    user = register_user(db, payload.email, payload.password, payload.role)
+    user = register_user(db, payload.email, payload.password, payload.role, payload.admin_code)
     return {"id": user.id, "email": user.email, "role": user.role}
 
 
@@ -63,8 +66,9 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
 def login(payload: LoginIn, db: Session = Depends(get_db)):
     """
     Logs user in and returns auth token.
+    Admin login requires authorization via backend configuration.
     """
-    token = login_user(db, payload.email, payload.password)
+    token = login_user(db, payload.email, payload.password, payload.admin_code)
     return {"token": token}
 
 
@@ -137,6 +141,10 @@ def create_claim(payload: ClaimIn, db: Session = Depends(get_db),
     report = db.get(MissingReport, match.missing_report_id)
     if not report or report.user_id != user.id:
         raise HTTPException(status_code=403, detail="You can only claim your own matched reports")
+
+    existing_claim = db.query(Claim).filter(Claim.match_id == payload.match_id, Claim.user_id == user.id).first()
+    if existing_claim:
+        raise HTTPException(status_code=400, detail="Claim already exists for this match")
 
     claim = Claim(
         match_id=payload.match_id,
