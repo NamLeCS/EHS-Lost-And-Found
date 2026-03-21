@@ -28,6 +28,13 @@ export function Layout() {
     }
   }, [])
 
+  function recheckApi() {
+    setApiOk(null)
+    healthCheck()
+      .then((r) => setApiOk(!!r.ok))
+      .catch(() => setApiOk(false))
+  }
+
   return (
     <div className="min-h-screen pb-12">
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 shadow-sm backdrop-blur-md">
@@ -40,19 +47,25 @@ export function Layout() {
               EHS Lost & Found
             </NavLink>
             {apiOk !== null && (
-              <span
+              <button
+                type="button"
+                onClick={recheckApi}
                 className={`hidden items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium sm:inline-flex ${
                   apiOk
                     ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200'
                     : 'bg-red-50 text-red-800 ring-1 ring-red-200'
                 }`}
-                title="GET /health"
+                title={
+                  apiOk
+                    ? 'GET /health — click to refresh'
+                    : 'Cannot reach GET /health. Start: uvicorn backend.main:app --reload --port 8000. Use npm run dev for the UI. Click to retry.'
+                }
               >
                 <span
                   className={`size-1.5 rounded-full ${apiOk ? 'bg-emerald-500' : 'bg-red-500'}`}
                 />
                 API {apiOk ? 'online' : 'offline'}
-              </span>
+              </button>
             )}
           </div>
 

@@ -5,12 +5,13 @@ const PENDING_IDENTITY_KEY = 'ehs_lf_pending_identity'
 const AUTH_KEY = 'ehs_lf_auth'
 
 export function getApiBase(): string {
-  return import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? '/api' : 'http://localhost:8000')
+  return import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? '/api' : 'http://127.0.0.1:8000')
 }
 
 export const api = axios.create({
   baseURL: getApiBase(),
   headers: { 'Content-Type': 'application/json' },
+  timeout: 20_000,
 })
 
 api.interceptors.request.use((config) => {
@@ -87,11 +88,14 @@ export async function registerRequest(
 }
 
 export async function loginRequest(email: string, password: string) {
-  const { data } = await api.post<{ token: string }>('/login', {
+  const { data } = await api.post<{
+    token: string
+    user: { id: number; email: string; role: string }
+  }>('/login', {
     email,
     password,
   })
-  return data.token
+  return data
 }
 
 export async function createMissingReport(payload: MissingReportPayload) {
@@ -119,6 +123,13 @@ export async function createClaim(matchId: number) {
   return data
 }
 
+export async function fetchMyClaims() {
+  const { data } = await api.get<
+    { claim_id: number; match_id: number; report_id: number; status: string }[]
+  >('/claims')
+  return data
+}
+
 /** Backend expects `status` as a query parameter, not JSON body. */
 export async function updateClaimStatus(
   claimId: number,
@@ -137,6 +148,12 @@ export async function healthCheck() {
 
 export function apiErrorMessage(err: unknown, fallback = 'Something went wrong') {
   const ax = err as AxiosError<{ detail?: string | { msg: string }[] }>
+  if (ax.code === 'ECONNABORTED') {
+    return 'Request timed out. Is the API running? Try: uvicorn backend.main:app --reload --port 8000'
+  }
+  if (ax.code === 'ERR_NETWORK' || ax.message === 'Network Error') {
+    return 'Cannot reach the API. Start the backend on port 8000 and use the Vite dev server (npm run dev) so /api proxies correctly.'
+  }
   const d = ax.response?.data?.detail
   if (typeof d === 'string') return d
   if (Array.isArray(d) && d[0]?.msg) return d.map((x) => x.msg).join(', ')

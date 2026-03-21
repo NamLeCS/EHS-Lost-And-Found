@@ -46,7 +46,7 @@ def register_user(db: Session, email: str, password: str, role: str = "student")
     return user
 
 
-def login_user(db: Session, email: str, password: str):
+def login_user(db: Session, email: str, password: str) -> tuple[str, User]:
     """
     Logs a user in.
 
@@ -64,8 +64,9 @@ def login_user(db: Session, email: str, password: str):
     user.token = token
 
     db.commit()
+    db.refresh(user)
 
-    return token
+    return token, user
 
 
 def get_current_user(

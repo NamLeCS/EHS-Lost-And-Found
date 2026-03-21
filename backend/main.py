@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -8,6 +9,20 @@ from .auth import register_user, login_user, get_current_user, require_admin
 from .matching import on_missing_report_created, on_found_item_created
 
 app = FastAPI(title="EHS Lost & Found Backend")
+
+# Lets the Vite dev server (and preview) call the API directly if needed; also helps some proxy setups.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
@@ -62,10 +77,13 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
 @app.post("/login")
 def login(payload: LoginIn, db: Session = Depends(get_db)):
     """
-    Logs user in and returns auth token.
+    Logs user in and returns auth token plus user profile (id, email, role).
     """
-    token = login_user(db, payload.email, payload.password)
-    return {"token": token}
+    token, user = login_user(db, payload.email, payload.password)
+    return {
+        "token": token,
+        "user": {"id": user.id, "email": user.email, "role": user.role},
+    }
 
 
 # ---------- REQUIRED ENDPOINTS ----------
@@ -149,6 +167,29 @@ def create_claim(payload: ClaimIn, db: Session = Depends(get_db),
     db.refresh(claim)
 
     return {"claim_id": claim.id, "status": claim.status}
+
+
+@app.get("/claims")
+def list_my_claims(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """
+    Returns all claims submitted by the logged-in user (newest first).
+    """
+    rows = (
+        db.query(Claim, Match)
+        .join(Match, Claim.match_id == Match.id)
+        .filter(Claim.user_id == user.id)
+        .order_by(Claim.id.desc())
+        .all()
+    )
+    return [
+        {
+            "claim_id": claim.id,
+            "match_id": claim.match_id,
+            "report_id": match_row.missing_report_id,
+            "status": claim.status,
+        }
+        for claim, match_row in rows
+    ]
 
 
 @app.patch("/claims/{claim_id}")
