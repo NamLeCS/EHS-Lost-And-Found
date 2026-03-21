@@ -2,10 +2,10 @@ from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from db import init_db, get_db
-from models import MissingReport, FoundItem, Match, Claim
-from auth import register_user, login_user, get_current_user, require_admin
-from matching import on_missing_report_created, on_found_item_created
+from .db import init_db, get_db
+from .models import MissingReport, FoundItem, Match, Claim
+from .auth import register_user, login_user, get_current_user, require_admin
+from .matching import on_missing_report_created, on_found_item_created
 
 app = FastAPI(title="EHS Lost & Found Backend")
 
