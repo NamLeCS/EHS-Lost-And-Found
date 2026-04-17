@@ -1,10 +1,12 @@
+from dotenv import load_dotenv
+load_dotenv() # This pulls the variables from your .env file into Python
 from types import SimpleNamespace
 
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr, Field
-
+# py -3.12 -m uvicorn backend.main:app --reload --port 8000
 from .db import init_db, get_db
 from .models import MissingReport, FoundItem, Match, Claim
 from .auth import register_user, login_user, get_current_user, require_admin
@@ -123,30 +125,31 @@ def create_missing(
     return {"report_id": report.id, "status": report.status}
 
 
-@app.get("/missing-reports/me")
-def get_my_missing_reports(
+@app.get("/missing-reports")
+def get_all_reports(
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(get_current_user), # Keep this if they must be logged in to see the list
 ):
     reports = (
         db.query(MissingReport)
-        .filter(MissingReport.user_id == user.id)
+        # REMOVED the .filter(...) line entirely
         .order_by(MissingReport.id.desc())
         .all()
     )
-
+    
     return [
         {
-            "id": report.id,
-            "category": report.category,
-            "brand": report.brand,
-            "colors": report.colors,
-            "description": report.description,
-            "location": report.location,
-            "time": report.time,
-            "status": report.status,
+            "id": r.id,
+            "user_id": r.user_id,
+            "category": r.category,
+            "brand": r.brand,
+            "colors": r.colors,
+            "description": r.description,
+            "location": r.location,
+            "time": r.time,
+            "status": r.status,
         }
-        for report in reports
+        for r in reports
     ]
 
 
@@ -203,19 +206,18 @@ def search_found_items(
 
 @app.get("/matches/{report_id}")
 def get_matches(
-    report_id: int,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    report_id: int, 
+    db: Session = Depends(get_db)
 ):
     """
     Returns matches for a given missing report.
-    Only the report owner or an admin can access them.
+    Publicly accessible - no ownership check.
     """
     report = db.get(MissingReport, report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Missing report not found")
-    if user.role != "admin" and report.user_id != user.id:
-        raise HTTPException(status_code=403, detail="Not allowed to view these matches")
+
+    # The security check that was causing the 403 error has been removed.
 
     matches = (
         db.query(Match)

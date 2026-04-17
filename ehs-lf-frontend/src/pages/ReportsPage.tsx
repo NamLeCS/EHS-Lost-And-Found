@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import {
   apiErrorMessage,
   createMissingReport,
+  fetchAllMissingReports,
 } from '../lib/api'
-import { getStoredReports, saveReport } from '../lib/storage'
 import { EmptyState } from '../components/EmptyState'
 import { FieldError } from '../components/FieldError'
 import { Spinner } from '../components/Spinner'
@@ -16,7 +16,12 @@ export function ReportsPage() {
   const { user } = useAuth()
   const [refresh, setRefresh] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  const [loading, setLoading] = useState(true)
 
+  // State for the reports list
+  const [reports, setReports] = useState<any[]>([])
+
+  // Form states (Restored all original fields)
   const [category, setCategory] = useState('')
   const [brand, setBrand] = useState('')
   const [colors, setColors] = useState('')
@@ -25,10 +30,22 @@ export function ReportsPage() {
   const [dateLost, setDateLost] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const reports = useMemo(() => {
-    void refresh
-    return getStoredReports().filter((r) => r.user_id === user?.id)
-  }, [user?.id, refresh])
+  // Fetch reports from the Database
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true)
+        const data = await fetchAllMissingReports()
+        setReports(data)
+      } catch (err) {
+        console.error(err)
+        toast.error("Could not load reports from server")
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [refresh, user?.id])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -48,20 +65,17 @@ export function ReportsPage() {
         location: location.trim(),
         time: dateLost.trim(),
       }
-      const id = await createMissingReport(payload)
-      saveReport({
-        ...payload,
-        id,
-        status: 'ACTIVE',
-        createdAt: new Date().toISOString(),
-        user_id: user!.id,
-      })
+      
+      await createMissingReport(payload)
+      
+      // Clear all fields after success
       setCategory('')
       setBrand('')
       setColors('')
       setDescription('')
       setLocation('')
       setDateLost('')
+      
       setRefresh((x) => x + 1)
       toast.success('Missing report filed — check for matches anytime.')
     } catch (err) {
@@ -85,6 +99,7 @@ export function ReportsPage() {
         <p className="mt-1 text-sm text-slate-600">
           Colors can be comma-separated, e.g. <span className="font-mono text-slate-800">navy,white</span>.
         </p>
+
         <form onSubmit={handleSubmit} className="mt-6 grid gap-5 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <label className="block text-sm font-medium text-slate-700">Category</label>
@@ -96,6 +111,7 @@ export function ReportsPage() {
             />
             <FieldError message={errors.category} />
           </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-700">Brand</label>
             <input
@@ -105,6 +121,7 @@ export function ReportsPage() {
               placeholder="Optional"
             />
           </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-700">Colors</label>
             <input
@@ -114,6 +131,7 @@ export function ReportsPage() {
               placeholder="red, black"
             />
           </div>
+
           <div className="sm:col-span-2">
             <label className="block text-sm font-medium text-slate-700">Description</label>
             <textarea
@@ -124,6 +142,7 @@ export function ReportsPage() {
               placeholder="Notable details, scratches, stickers, initials…"
             />
           </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-700">Last seen location</label>
             <input
@@ -133,6 +152,7 @@ export function ReportsPage() {
               placeholder="Gym, Library, Bus 12…"
             />
           </div>
+
           <div>
             <label className="block text-sm font-medium text-slate-700">Date lost</label>
             <input
@@ -143,6 +163,7 @@ export function ReportsPage() {
             />
             <FieldError message={errors.dateLost} />
           </div>
+
           <div className="sm:col-span-2">
             <button
               type="submit"
@@ -157,23 +178,19 @@ export function ReportsPage() {
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-slate-900">Your reports</h2>
-        {reports.length === 0 ? (
+        <h2 className="text-lg font-semibold text-slate-900">Live Reports</h2>
+        {loading ? (
+          <div className="mt-10 flex justify-center"><Spinner className="size-8 text-brand-600" /></div>
+        ) : reports.length === 0 ? (
           <div className="mt-4">
-            <EmptyState
-              title="No missing reports yet"
-              message="File one above — we will keep an eye out and show possible matches when items are turned in."
-            />
+            <EmptyState title="No reports found" message="The database is currently empty." />
           </div>
         ) : (
           <ul className="mt-4 space-y-3">
             {reports.map((r) => (
-              <li
-                key={r.id}
-                className="flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-md shadow-slate-200/40 ring-1 ring-slate-200/80 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0 text-left">
-                  <div className="flex flex-wrap items-center gap-2">
+              <li key={r.id} className="flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-md ring-1 ring-slate-200/80 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
                     <span className="font-semibold text-slate-900">{r.category}</span>
                     <StatusBadge status={r.status} />
                   </div>
@@ -182,10 +199,7 @@ export function ReportsPage() {
                   </p>
                   <p className="mt-1 line-clamp-2 text-sm text-slate-500">{r.description}</p>
                 </div>
-                <Link
-                  to={`/reports/${r.id}/matches`}
-                  className="inline-flex shrink-0 items-center justify-center rounded-xl bg-brand-50 px-4 py-2.5 text-sm font-semibold text-brand-800 ring-1 ring-brand-200 transition hover:bg-brand-100"
-                >
+                <Link to={`/reports/${r.id}/matches`} className="inline-flex shrink-0 items-center justify-center rounded-xl bg-brand-50 px-4 py-2.5 text-sm font-semibold text-brand-800 ring-1 ring-brand-200 transition hover:bg-brand-100">
                   View matches
                 </Link>
               </li>

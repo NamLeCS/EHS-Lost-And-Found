@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
   apiErrorMessage,
   createFoundItem,
+  fetchAllFoundItems, // Added this
 } from '../lib/api'
-import { getStoredFoundItems, saveFoundItem } from '../lib/storage'
 import { EmptyState } from '../components/EmptyState'
 import { FieldError } from '../components/FieldError'
 import { Spinner } from '../components/Spinner'
@@ -13,6 +13,9 @@ import { StatusBadge } from '../components/StatusBadge'
 export function AdminFoundItemsPage() {
   const [refresh, setRefresh] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState<any[]>([])
+
   const [category, setCategory] = useState('')
   const [brand, setBrand] = useState('')
   const [colors, setColors] = useState('')
@@ -21,9 +24,21 @@ export function AdminFoundItemsPage() {
   const [dateFound, setDateFound] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const items = useMemo(() => {
-    void refresh
-    return getStoredFoundItems()
+  // 1. Fetch from Database on load
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true)
+        const data = await fetchAllFoundItems()
+        setItems(data)
+      } catch (err) {
+        console.error(err)
+        toast.error("Could not load found items")
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
   }, [refresh])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -44,19 +59,17 @@ export function AdminFoundItemsPage() {
         location: location.trim(),
         time: dateFound.trim(),
       }
-      const id = await createFoundItem(payload)
-      saveFoundItem({
-        ...payload,
-        id,
-        status: 'UNCLAIMED',
-        createdAt: new Date().toISOString(),
-      })
+      
+      // 2. Send to REAL backend
+      await createFoundItem(payload)
+      
       setCategory('')
       setBrand('')
       setColors('')
       setDescription('')
       setLocation('')
       setDateFound('')
+      
       setRefresh((x) => x + 1)
       toast.success('Found item logged — matching engine updated.')
     } catch (err) {
@@ -69,9 +82,9 @@ export function AdminFoundItemsPage() {
   return (
     <div className="space-y-10">
       <div>
-        <h1 className="text-3xl font-bold text-slate-900">Found items</h1>
+        <h1 className="text-3xl font-bold text-slate-900">Found items (Admin)</h1>
         <p className="mt-1 text-slate-600">
-          Log items turned in at the office. They will be matched against active missing reports.
+          Log items turned in at the office. These go directly to the database for matching.
         </p>
       </div>
 
@@ -83,7 +96,8 @@ export function AdminFoundItemsPage() {
             <input
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 outline-none ring-brand-500/25 focus:border-brand-500 focus:bg-white focus:ring-4"
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 outline-none focus:border-brand-500 focus:bg-white focus:ring-4 ring-brand-500/25"
+              placeholder="e.g. iPhone, Blue Wallet..."
             />
             <FieldError message={errors.category} />
           </div>
@@ -92,7 +106,7 @@ export function AdminFoundItemsPage() {
             <input
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 outline-none ring-brand-500/25 focus:border-brand-500 focus:bg-white focus:ring-4"
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 outline-none focus:border-brand-500"
             />
           </div>
           <div>
@@ -100,8 +114,8 @@ export function AdminFoundItemsPage() {
             <input
               value={colors}
               onChange={(e) => setColors(e.target.value)}
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 outline-none focus:border-brand-500"
               placeholder="comma-separated"
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 outline-none ring-brand-500/25 focus:border-brand-500 focus:bg-white focus:ring-4"
             />
           </div>
           <div className="sm:col-span-2">
@@ -110,31 +124,31 @@ export function AdminFoundItemsPage() {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 outline-none ring-brand-500/25 focus:border-brand-500 focus:bg-white focus:ring-4"
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 outline-none focus:border-brand-500"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700">Location found</label>
-            <input
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 outline-none ring-brand-500/25 focus:border-brand-500 focus:bg-white focus:ring-4"
-            />
+             <label className="block text-sm font-medium text-slate-700">Location found</label>
+             <input
+               value={location}
+               onChange={(e) => setLocation(e.target.value)}
+               className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 outline-none focus:border-brand-500"
+             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700">Date found</label>
-            <input
-              value={dateFound}
-              onChange={(e) => setDateFound(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 outline-none ring-brand-500/25 focus:border-brand-500 focus:bg-white focus:ring-4"
-            />
-            <FieldError message={errors.dateFound} />
+             <label className="block text-sm font-medium text-slate-700">Date found</label>
+             <input
+               value={dateFound}
+               onChange={(e) => setDateFound(e.target.value)}
+               className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 outline-none focus:border-brand-500"
+             />
+             <FieldError message={errors.dateFound} />
           </div>
           <div className="sm:col-span-2">
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-brand-600/20 hover:bg-brand-700 disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-md hover:bg-brand-700 disabled:opacity-60"
             >
               {submitting && <Spinner className="size-4 border-2 border-white/40 border-t-white" />}
               Save found item
@@ -145,21 +159,17 @@ export function AdminFoundItemsPage() {
 
       <section>
         <h2 className="text-lg font-semibold text-slate-900">Recently logged</h2>
-        {items.length === 0 ? (
+        {loading ? (
+           <div className="mt-10 flex justify-center"><Spinner className="size-8 text-brand-600" /></div>
+        ) : items.length === 0 ? (
           <div className="mt-4">
-            <EmptyState
-              title="No found items yet"
-              message="Add the first item above — students with matching missing reports will see it as a possible match."
-            />
+            <EmptyState title="No items found" message="The database is empty." />
           </div>
         ) : (
           <ul className="mt-4 space-y-3">
             {items.map((item) => (
-              <li
-                key={item.id}
-                className="rounded-2xl bg-white p-5 text-left shadow-md shadow-slate-200/40 ring-1 ring-slate-200/80"
-              >
-                <div className="flex flex-wrap items-center gap-2">
+              <li key={item.id} className="rounded-2xl bg-white p-5 shadow-md ring-1 ring-slate-200/80">
+                <div className="flex items-center gap-2">
                   <span className="font-semibold text-slate-900">#{item.id}</span>
                   <span className="font-medium text-slate-800">{item.category}</span>
                   <StatusBadge status={item.status} />
@@ -167,9 +177,6 @@ export function AdminFoundItemsPage() {
                 <p className="mt-1 text-sm text-slate-600">
                   {[item.brand, item.colors, item.location].filter(Boolean).join(' · ')}
                 </p>
-                {item.description ? (
-                  <p className="mt-2 text-sm text-slate-500">{item.description}</p>
-                ) : null}
               </li>
             ))}
           </ul>

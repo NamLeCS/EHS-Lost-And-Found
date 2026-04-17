@@ -5,7 +5,8 @@ const PENDING_IDENTITY_KEY = 'ehs_lf_pending_identity'
 const AUTH_KEY = 'ehs_lf_auth'
 
 export function getApiBase(): string {
-  return import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? '/api' : 'http://127.0.0.1:8000')
+  // Direct connection to your Python backend
+  return 'http://127.0.0.1:8000'
 }
 
 export const api = axios.create({
@@ -158,4 +159,14 @@ export function apiErrorMessage(err: unknown, fallback = 'Something went wrong')
   if (typeof d === 'string') return d
   if (Array.isArray(d) && d[0]?.msg) return d.map((x) => x.msg).join(', ')
   return ax.message || fallback
+}
+
+export async function fetchAllMissingReports() {
+  const { data } = await api.get('/missing-reports')
+  return data
+}
+
+export async function fetchAllFoundItems() {
+  const res = await api.get('/found-items') // Assumes your backend has this route
+  return res.data
 }
