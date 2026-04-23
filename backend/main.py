@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-load_dotenv() # This pulls the variables from your .env file into Python
+load_dotenv() 
 from types import SimpleNamespace
 
 from fastapi import FastAPI, Depends, HTTPException, Query
@@ -14,7 +14,6 @@ from .matching import on_missing_report_created, on_found_item_created, score_ma
 
 app = FastAPI(title="EHS Lost & Found Backend")
 
-# Lets the Vite dev server (and preview) call the API directly if needed; also helps some proxy setups.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -124,15 +123,46 @@ def create_missing(
 
     return {"report_id": report.id, "status": report.status}
 
+@app.post("/found-items")
+def create_found_item(
+    payload: FoundIn,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """
+    Admins use this to log items found on campus.
+    Once saved, it automatically triggers the matching engine.
+    """
+    require_admin(user)
+
+    item = FoundItem(**payload.model_dump(), status="UNCLAIMED")
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+
+    on_found_item_created(db, item.id)
+
+    return {"item_id": item.id, "status": item.status}
+
+@app.get("/found-items")
+def list_found_items(
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Returns all found items in the system.
+    """
+    items = db.query(FoundItem).order_by(FoundItem.id.desc()).all()
+    return items
 
 @app.get("/missing-reports")
 def get_all_reports(
     db: Session = Depends(get_db),
-    user=Depends(get_current_user), # Keep this if they must be logged in to see the list
+    user=Depends(get_current_user),
 ):
     reports = (
         db.query(MissingReport)
-        # REMOVED the .filter(...) line entirely
+
         .order_by(MissingReport.id.desc())
         .all()
     )
@@ -163,7 +193,7 @@ def search_found_items(
     Students describe what they lost and receive the most similar found items.
     This does not create a missing report; it is only a quick search endpoint.
     """
-    del user  # authenticated access only
+    del user  
 
     search_report = SimpleNamespace(
         category=payload.category,
@@ -217,7 +247,7 @@ def get_matches(
     if not report:
         raise HTTPException(status_code=404, detail="Missing report not found")
 
-    # The security check that was causing the 403 error has been removed.
+  
 
     matches = (
         db.query(Match)
@@ -350,3 +380,26 @@ def update_claim(
 @app.get("/health")
 def healthcheck():
     return {"ok": True}
+
+@app.get("/claims/admin")
+def get_all_claims_for_admin(db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """
+    Returns all claims for admin review.
+    """
+    require_admin(user)
+    
+
+    claims = db.query(Claim).order_by(Claim.id.desc()).all()
+    
+    results = []
+    for c in claims:
+        match = db.get(Match, c.match_id)
+        results.append({
+            "claim_id": c.id,
+            "match_id": c.match_id,
+            "report_id": match.missing_report_id if match else 0,
+            "user_id": c.user_id,
+            "status": c.status,
+            "createdAt": c.created_at.isoformat() if hasattr(c, 'created_at') else "2024-01-01T00:00:00Z"
+        })
+    return results

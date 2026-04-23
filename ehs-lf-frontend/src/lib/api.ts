@@ -49,7 +49,7 @@ export function clearAuth() {
   localStorage.removeItem(PENDING_IDENTITY_KEY)
 }
 
-/** After register, backend returns id/email/role — used on next login to build `user`. */
+
 export function savePendingIdentity(payload: {
   id: number
   email: string
@@ -131,7 +131,7 @@ export async function fetchMyClaims() {
   return data
 }
 
-/** Backend expects `status` as a query parameter, not JSON body. */
+
 export async function updateClaimStatus(
   claimId: number,
   status: 'APPROVED' | 'DENIED' | 'PENDING',
@@ -167,6 +167,11 @@ export async function fetchAllMissingReports() {
 }
 
 export async function fetchAllFoundItems() {
-  const res = await api.get('/found-items') // Assumes your backend has this route
+  const res = await api.get('/found-items') 
   return res.data
+}
+
+export async function fetchAllClaimsForAdmin() {
+  const { data } = await api.get<any[]>('/claims/admin')
+  return data
 }
